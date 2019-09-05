@@ -1,0 +1,143 @@
+
+import cielo.orders.domain.CheckoutRequest;
+import cielo.orders.domain.Credentials;
+import cielo.orders.domain.Order;
+import cielo.sdk.order.OrderManager;
+import cielo.sdk.order.ServiceBindListener;
+import cielo.sdk.order.payment.PaymentCode;
+import cielo.sdk.order.payment.PaymentError;
+import cielo.sdk.order.payment.PaymentListener;
+
+public class Cielo{
+
+    private OrderManager orderManager;
+    private boolean orderManagerServiceBinded = false;
+    private Pedido pedido;
+    private Order order;
+    public final String TAG = "PAYMENT_LISTENER";
+
+    protected void configSDK() {
+        Credentials credentials = new Credentials("clientId",
+                "accessToken");
+        orderManager = new OrderManager(credentials, this);
+        orderManager.bind(this, new ServiceBindListener() {
+
+            @Override
+            public void onServiceBoundError(Throwable throwable) {
+                orderManagerServiceBinded = false;
+
+                Toast.makeText(getApplicationContext(),
+                        String.format("Erro fazendo bind do serviço de ordem -> %s",
+                                throwable.getMessage()), Toast.LENGTH_LONG).show();
+            }
+
+            @Override
+            public void onServiceBound() {
+                orderManagerServiceBinded = true;
+
+                Date date = new Date();
+
+                order = orderManager.createDraftOrder(date.toString());
+
+                addItem();
+            }
+
+            @Override
+            public void onServiceUnbound() {
+                orderManagerServiceBinded = false;
+            }
+        });
+    }
+
+    private CheckoutRequest createRequest(long valor){
+
+        if(pedido.getPaymentCode() == PaymentCode.DEBITO_AVISTA){
+
+            CheckoutRequest request = new CheckoutRequest.Builder()
+                    .orderId(order.getId())
+                    .amount(valor)
+                    .paymentCode(pedido.getPaymentCode())
+                    .build();
+
+            return request;
+
+        }else if(pedido.getPaymentCode() == PaymentCode.CREDITO_AVISTA){
+
+            CheckoutRequest request = new CheckoutRequest.Builder()
+                    .orderId(order.getId())
+                    .amount(valor)
+                    .paymentCode(pedido.getPaymentCode())
+                    .installments(1)
+                    .build();
+
+            return request;
+        }
+
+        int parcelas = Integer.parseInt(pedido.getParcelas());
+
+        CheckoutRequest request = new CheckoutRequest.Builder()
+                .orderId(order.getId())
+                .amount(valor)
+                .paymentCode(pedido.getPaymentCode())
+                .installments(parcelas)
+                .build();
+
+        return request;
+
+    }
+
+    private void addItem(){
+
+        String valorString =  AppUtil.formatarParaCentavos(pedido.getValor());
+        long valor = Long.parseLong(valorString);
+
+        if(orderManagerServiceBinded){
+
+            order.addItem(pedido.getSku(), "XXXXX", valor, 1, "unit");
+            orderManager.placeOrder(order);
+
+            payment(valor);
+        }
+    }
+
+    private void payment(long valor){
+
+        CheckoutRequest request = createRequest(valor);
+
+        orderManager.checkoutOrder(request, new PaymentListener() {
+            @Override
+            public void onStart() {
+                Log.d(TAG, "ON START");
+            }
+
+            @Override
+            public void onPayment(Order paidOrder) {
+
+                order = paidOrder;
+
+                order.markAsPaid();
+                orderManager.updateOrder(order);
+
+                Toast.makeText(CieloActivity.this,"Pagamento efetuado com sucesso.",
+                        Toast.LENGTH_LONG).show();
+
+                goMain();
+            }
+
+            @Override
+            public void onCancel() {
+                Log.d(TAG, "ON CANCEL");
+            }
+
+            @Override
+            public void onError(PaymentError paymentError) {
+                Log.d(TAG, "ON ERROR");
+            }
+        });
+
+    }
+
+    private void finish(){
+		orderManager.unbind();
+	}
+}
