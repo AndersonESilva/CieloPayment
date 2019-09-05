@@ -1,2 +1,2 @@
 # CieloPayment
-Configuração e implementação de pagamento Android em Cielo
+Implementação de configuração e pagamento Android em Cielo Lio.
